@@ -16,7 +16,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Data.Conduit.FSNotify
-  build-depends:       base >= 4.7 && < 5
+  build-depends:       base >= 4.6 && < 5
                      , conduit
                      , directory
                      , filepath
