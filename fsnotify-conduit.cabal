@@ -20,7 +20,7 @@ library
                      , conduit
                      , directory
                      , filepath
-                     , fsnotify
+                     , fsnotify >= 0.2.1
                      , resourcet
                      , transformers
   default-language:    Haskell2010
