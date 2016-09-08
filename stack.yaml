@@ -41,6 +41,7 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - fsnotify-0.2.1
+- hfsevents-0.1.6
 
 # Override default flag values for local packages and extra-deps
 flags: {}
