@@ -3,6 +3,7 @@
 module Data.Conduit.FSNotify
     ( -- * Conduit API
       sourceFileChanges
+    , acquireSourceFileChanges
     , FileChangeSettings
     , mkFileChangeSettings
 
@@ -22,8 +23,9 @@ module Data.Conduit.FSNotify
 
 import Control.Exception (assert)
 import Data.Conduit
-import Control.Monad.Trans.Resource (MonadResource)
-import Control.Monad.IO.Class (liftIO)
+import Data.Acquire
+import Control.Monad.Trans.Resource (MonadResource, release)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad (forever)
 import qualified System.FSNotify as FS
 import System.Directory (canonicalizePath)
@@ -102,13 +104,23 @@ mkFileChangeSettings dir = FileChangeSettings
 sourceFileChanges :: MonadResource m
                   => FileChangeSettings
                   -> Producer m FS.Event
-sourceFileChanges FileChangeSettings {..} =
-  -- The bracketP function allows us to safely allocate some resource
-  -- and guarantee it will be cleaned up. In our case, we are calling
-  -- startManager to allocate a file watching manager, and stopManager
-  -- to clean it up. These functions will under the surface tie in to
-  -- OS-specific file watch mechanisms, such as inotify on Linux.
-  bracketP (FS.startManagerConf fcsWatchConfig) FS.stopManager $ \man -> do
+sourceFileChanges fcs = do
+    (releaseKey, src) <- allocateAcquire $ acquireSourceFileChanges fcs
+    src
+    release releaseKey
+
+-- | Same as 'sourceFileChanges', but returns the stream as an
+-- 'Acquire' value, so that 'ResourceT' does not need to be used. See
+-- the README.md for example usage.
+--
+-- @since 0.1.1.0
+acquireSourceFileChanges
+    :: MonadIO m
+    => FileChangeSettings
+    -> Acquire (ConduitM i FS.Event m ())
+acquireSourceFileChanges FileChangeSettings {..} = do
+    man <- mkAcquire (FS.startManagerConf fcsWatchConfig) FS.stopManager
+
     -- Get the absolute path of the root directory
     root' <- liftIO $ canonicalizePath fcsDir
 
@@ -120,7 +132,10 @@ sourceFileChanges FileChangeSettings {..} =
 
     -- Start watching a directory tree, accepting all events (const True).
     let watchChan = if fcsRecursive then FS.watchTreeChan else FS.watchDirChan
-    bracketP (watchChan man root' fcsPredicate chan) id $ const $ forever $ do
+
+    _stop <- mkAcquire (watchChan man root' fcsPredicate chan) id
+
+    return $ forever $ do
         event <- liftIO $ readChan chan
 
         if fcsRelative
