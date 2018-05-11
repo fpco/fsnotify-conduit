@@ -17,7 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.Conduit.FSNotify
   build-depends:       base >= 4.9 && < 5
-                     , conduit
+                     , conduit >= 1.2.8
                      , directory
                      , filepath
                      , fsnotify >= 0.2.1
@@ -37,7 +37,6 @@ test-suite fsnotify-conduit-test
                      , filepath
                      , fsnotify-conduit
                      , hspec
-                     , resourcet
                      , temporary
                      , transformers
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N

@@ -101,7 +101,7 @@ mkFileChangeSettings dir = FileChangeSettings
 -- @since 0.1.0.0
 sourceFileChanges :: MonadResource m
                   => FileChangeSettings
-                  -> Producer m FS.Event
+                  -> ConduitM i FS.Event m ()
 sourceFileChanges FileChangeSettings {..} =
   -- The bracketP function allows us to safely allocate some resource
   -- and guarantee it will be cleaned up. In our case, we are calling

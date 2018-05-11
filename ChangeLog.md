@@ -1,6 +1,7 @@
 ## 0.1.1.0
 
 * Drop older GHC support
+* Make test suite more reliable [#2](https://github.com/fpco/fsnotify-conduit/issues/2)
 
 ## 0.1.0.0
 
