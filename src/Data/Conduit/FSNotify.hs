@@ -29,6 +29,7 @@ import qualified System.FSNotify as FS
 import System.Directory (canonicalizePath)
 import Control.Concurrent.Chan
 import Data.List (stripPrefix)
+import System.IO
 import System.FilePath (addTrailingPathSeparator)
 
 -- | Settings for watching for file changes, to be passed in to
@@ -117,11 +118,14 @@ sourceFileChanges FileChangeSettings {..} =
     -- we want to fill up a channel with those events, and then below
     -- read the values off that channel.
     chan <- liftIO newChan
+    let another event = hPrint stderr event >> writeChan chan event
 
     -- Start watching a directory tree, accepting all events (const True).
-    let watchChan = if fcsRecursive then FS.watchTreeChan else FS.watchDirChan
-    bracketP (watchChan man root' fcsPredicate chan) id $ const $ forever $ do
+    let watchChan = if fcsRecursive then FS.watchTree else FS.watchDir
+    liftIO $ hPrint stderr (fcsRecursive, root')
+    bracketP (watchChan man root' fcsPredicate another) id $ const $ forever $ do
         event <- liftIO $ readChan chan
+        liftIO $ hPrint stderr event
 
         if fcsRelative
             then do
