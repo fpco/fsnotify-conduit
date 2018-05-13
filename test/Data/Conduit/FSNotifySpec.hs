@@ -1,7 +1,7 @@
 module Data.Conduit.FSNotifySpec where
 
 import Test.Hspec (Spec, it, shouldBe)
-import Data.Conduit (ZipSource (..), runConduitRes, (.|), yield, await)
+import Data.Conduit (ZipSource (..), runConduit, (.|), yield, await)
 import qualified Data.Conduit.List as CL
 import Data.Conduit.FSNotify
 import Control.Monad (forM_)
@@ -11,7 +11,9 @@ import System.FilePath ((</>))
 import System.Directory (removeFile)
 import System.IO.Temp (withSystemTempDirectory)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Resource (runResourceT)
 import System.IO
+import qualified Data.Acquire
 
 spec :: Spec
 spec = do
@@ -24,6 +26,7 @@ spec = do
                 , ("foo", Nothing)
                 ]
             go (path, mcontents) = do
+                liftIO $ threadDelay 100000
                 liftIO $ hPrint stderr (path, mcontents)
                 liftIO $ case mcontents of
                     Nothing -> removeFile (root </> path)
@@ -33,7 +36,6 @@ spec = do
                 case mnext of
                     Nothing -> error "Unexpected empty"
                     Just event -> liftIO $ eventPath event `shouldBe` path
-        runConduitRes
-           $ sourceFileChanges (mkFileChangeSettings root)
-          .| mapM_ go actions
-          :: IO ()
+        Data.Acquire.with (acquireSourceFileChanges $ mkFileChangeSettings root) $ \src ->
+            runConduit $ src .| mapM_ go actions
+        return () :: IO () -- force the type

@@ -3,6 +3,7 @@
 module Data.Conduit.FSNotify
     ( -- * Conduit API
       sourceFileChanges
+    , acquireSourceFileChanges
     , FileChangeSettings
     , mkFileChangeSettings
 
@@ -23,14 +24,15 @@ module Data.Conduit.FSNotify
 import Control.Exception (assert)
 import Data.Conduit
 import Control.Monad.Trans.Resource (MonadResource)
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad (forever)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad (forever, join)
 import qualified System.FSNotify as FS
 import System.Directory (canonicalizePath)
 import Control.Concurrent.Chan
 import Data.List (stripPrefix)
 import System.IO
 import System.FilePath (addTrailingPathSeparator)
+import qualified Data.Acquire as A
 
 -- | Settings for watching for file changes, to be passed in to
 -- 'sourceFileChanges'. Should be created with 'mkFileChangeSettings'.
@@ -92,24 +94,18 @@ mkFileChangeSettings dir = FileChangeSettings
     , fcsPredicate = const True
     }
 
--- | Watch for changes to a directory, and yield the file paths
--- downstream. Typical usage would be:
---
--- @
--- sourceFileChanges (setRelative False $ mkFileChangeSettings dir)
--- @
---
--- @since 0.1.0.0
-sourceFileChanges :: MonadResource m
-                  => FileChangeSettings
-                  -> ConduitM i FS.Event m ()
-sourceFileChanges FileChangeSettings {..} =
-  -- The bracketP function allows us to safely allocate some resource
-  -- and guarantee it will be cleaned up. In our case, we are calling
-  -- startManager to allocate a file watching manager, and stopManager
-  -- to clean it up. These functions will under the surface tie in to
-  -- OS-specific file watch mechanisms, such as inotify on Linux.
-  bracketP (FS.startManagerConf fcsWatchConfig) FS.stopManager $ \man -> do
+acquireSourceFileChanges
+  :: MonadIO m
+  => FileChangeSettings
+  -> A.Acquire (ConduitM i FS.Event m ())
+acquireSourceFileChanges FileChangeSettings {..} = do
+    -- The bracketP function allows us to safely allocate some resource
+    -- and guarantee it will be cleaned up. In our case, we are calling
+    -- startManager to allocate a file watching manager, and stopManager
+    -- to clean it up. These functions will under the surface tie in to
+    -- OS-specific file watch mechanisms, such as inotify on Linux.
+    man <- A.mkAcquire (FS.startManagerConf fcsWatchConfig) FS.stopManager
+
     -- Get the absolute path of the root directory
     root' <- liftIO $ canonicalizePath fcsDir
 
@@ -118,12 +114,13 @@ sourceFileChanges FileChangeSettings {..} =
     -- we want to fill up a channel with those events, and then below
     -- read the values off that channel.
     chan <- liftIO newChan
-    let another event = hPrint stderr event >> writeChan chan event
 
     -- Start watching a directory tree, accepting all events (const True).
-    let watchChan = if fcsRecursive then FS.watchTree else FS.watchDir
-    liftIO $ hPrint stderr (fcsRecursive, root')
-    bracketP (watchChan man root' fcsPredicate another) id $ const $ forever $ do
+    let watchChan = if fcsRecursive then FS.watchTreeChan else FS.watchDirChan
+
+    _ <- A.mkAcquire (watchChan man root' fcsPredicate chan) id
+
+    return $ forever $ do
         event <- liftIO $ readChan chan
         liftIO $ hPrint stderr event
 
@@ -147,3 +144,16 @@ sourceFileChanges FileChangeSettings {..} =
                                 FS.Modified _ time -> FS.Modified suffix time
                                 FS.Removed _ time -> FS.Removed suffix time
             else yield event
+
+-- | Watch for changes to a directory, and yield the file paths
+-- downstream. Typical usage would be:
+--
+-- @
+-- sourceFileChanges (setRelative False $ mkFileChangeSettings dir)
+-- @
+--
+-- @since 0.1.0.0
+sourceFileChanges :: MonadResource m
+                  => FileChangeSettings
+                  -> ConduitM i FS.Event m ()
+sourceFileChanges = join . fmap snd . A.allocateAcquire . acquireSourceFileChanges
