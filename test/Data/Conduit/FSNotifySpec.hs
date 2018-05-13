@@ -1,16 +1,14 @@
 module Data.Conduit.FSNotifySpec where
 
 import Test.Hspec (Spec, it, shouldBe)
-import Data.Conduit (ZipSource (..), runConduitRes, (.|), yield)
-import qualified Data.Conduit.List as CL
+import Data.Conduit (runConduit, (.|), await)
 import Data.Conduit.FSNotify
-import Control.Monad (forM_)
-import Control.Concurrent.Async (concurrently_)
 import Control.Concurrent (threadDelay)
 import System.FilePath ((</>))
 import System.Directory (removeFile)
 import System.IO.Temp (withSystemTempDirectory)
 import Control.Monad.IO.Class (liftIO)
+import qualified Data.Acquire
 
 spec :: Spec
 spec = do
@@ -22,15 +20,15 @@ spec = do
                 , ("bar", Nothing)
                 , ("foo", Nothing)
                 ]
-        concurrently_
-            (forM_ actions $ \(path, mcontents) -> do
-                threadDelay 100000
-                case mcontents of
+            go (path, mcontents) = do
+                liftIO $ threadDelay 10000
+                liftIO $ case mcontents of
                     Nothing -> removeFile (root </> path)
-                    Just contents -> writeFile (root </> path) contents)
-            (let src1 = sourceFileChanges (mkFileChangeSettings root)
-                 src2 = mapM_ (yield . fst) actions
-                 src = getZipSource ((,) <$> ZipSource src1 <*> ZipSource src2)
-             in runConduitRes
-                    $ src
-                   .| CL.mapM_ (\(event, expected) -> liftIO $ eventPath event `shouldBe` expected))
+                    Just contents -> writeFile (root </> path) contents
+                mnext <- await
+                case mnext of
+                    Nothing -> error "Unexpected empty"
+                    Just event -> liftIO $ eventPath event `shouldBe` path
+        Data.Acquire.with (acquireSourceFileChanges $ mkFileChangeSettings root) $ \src ->
+            runConduit $ src .| mapM_ go actions
+        return () :: IO () -- force the type
