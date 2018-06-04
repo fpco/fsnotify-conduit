@@ -1,3 +1,7 @@
+## 0.1.1.1
+
+* Support fsnotify 0.3
+
 ## 0.1.1.0
 
 * Drop older GHC support
