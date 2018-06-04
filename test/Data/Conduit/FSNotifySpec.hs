@@ -21,7 +21,7 @@ spec = do
                 , ("foo", Nothing)
                 ]
             go (path, mcontents) = do
-                liftIO $ threadDelay 10000
+                liftIO $ threadDelay 1000000
                 liftIO $ case mcontents of
                     Nothing -> removeFile (root </> path)
                     Just contents -> writeFile (root </> path) contents

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 module Data.Conduit.FSNotify
@@ -161,7 +162,14 @@ acquireSourceFileChanges FileChangeSettings {..} = do
                         -- Got a change to the file, write it to the channel
                         | otherwise -> yield $
                             case event of
+#if MIN_VERSION_fsnotify(0, 3, 0)
+                                FS.Added _ time dir -> FS.Added suffix time dir
+                                FS.Modified _ time dir -> FS.Modified suffix time dir
+                                FS.Removed _ time dir -> FS.Removed suffix time dir
+                                FS.Unknown _ time str -> FS.Unknown suffix time str
+#else
                                 FS.Added _ time -> FS.Added suffix time
                                 FS.Modified _ time -> FS.Modified suffix time
                                 FS.Removed _ time -> FS.Removed suffix time
+#endif
             else yield event
