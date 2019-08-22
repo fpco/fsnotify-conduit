@@ -9,13 +9,12 @@ tree:
 
 ``` haskell
 #!/usr/bin/env stack
-{- stack
-     --resolver lts-6.15
+{- stack script
+     --resolver lts-13.6
      --install-ghc
-     runghc
      --package fsnotify-conduit
-     --package conduit-combinators
- -}
+     --package conduit
+-}
 
 import Conduit
 import Data.Conduit.FSNotify
@@ -28,7 +27,8 @@ main = do
         case args of
             [dir] -> return dir
             _ -> error $ "Expected one argument (directory to watch)"
-    runResourceT
+    runConduitRes
         $ sourceFileChanges (setRelative False $ mkFileChangeSettings dir)
-       $$ mapM_C (liftIO . print)
+       .| mapM_C (liftIO . print)
+
 ```
